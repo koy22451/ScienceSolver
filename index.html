@@ -1,0 +1,1175 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ScienceSolver</title>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+<style>
+*{box-sizing:border-box}
+
+body{
+  margin:0;
+  background:#0b0f14;
+  color:#fff;
+  font-family:Arial,sans-serif;
+}
+
+.app{
+  max-width:720px;
+  margin:auto;
+  padding:18px;
+}
+
+h1{
+  text-align:center;
+  margin:5px 0;
+}
+
+.desc{
+  text-align:center;
+  color:#8b95a5;
+  margin-bottom:18px;
+}
+
+.box{
+  background:#151b23;
+  border:1px solid #252d38;
+  border-radius:18px;
+  padding:16px;
+  margin-bottom:14px;
+}
+
+label{
+  display:block;
+  color:#aeb8c7;
+  margin:10px 0 6px;
+}
+
+select,input,textarea,button{
+  width:100%;
+  border:1px solid #303946;
+  border-radius:11px;
+  padding:13px;
+  background:#0e131a;
+  color:#fff;
+  font-size:16px;
+}
+
+textarea{
+  min-height:170px;
+  resize:vertical;
+}
+
+button{
+  margin-top:10px;
+  background:#2563eb;
+  border:0;
+  font-weight:bold;
+}
+
+button:active{
+  transform:scale(.98);
+}
+
+.result{
+  margin-top:15px;
+  background:#0b1016;
+  border-radius:12px;
+  padding:18px;
+  white-space:pre-wrap;
+  line-height:1.7;
+  border-left:4px solid #3b82f6;
+}
+
+.status{
+  color:#8b95a5;
+  font-size:13px;
+  margin-top:8px;
+}
+
+.examples{
+  color:#9aa5b5;
+  font-size:14px;
+  line-height:1.8;
+}
+</style>
+</head>
+
+<body>
+
+<div class="app">
+
+<h1>🧠 ScienceSolver</h1>
+
+<div class="desc">
+Matematika • Kimia • Fisika • Optik
+</div>
+
+<div class="box">
+
+<label>Bidang</label>
+
+<select id="subject">
+<option value="auto">🤖 Otomatis</option>
+<option value="math">🧮 Matematika</option>
+<option value="chem">🧪 Kimia</option>
+<option value="physics">🌍 Fisika / Gravitasi</option>
+<option value="optics">💡 Optik / Pantulan</option>
+</select>
+
+<label>📷 Foto soal</label>
+
+<input id="image" type="file" accept="image/*">
+
+<button id="read">
+📷 Baca Foto
+</button>
+
+<div id="status" class="status"></div>
+
+<label>📝 Tulis atau tempel soal</label>
+
+<textarea id="input"
+placeholder="Contoh:
+
+2x + 5 = 15
+
+atau
+
+Sebuah benda bermassa 5 kg dilempar vertikal ke atas
+dengan kecepatan awal 20 m/s. Jika percepatan gravitasi
+10 m/s² dan hambatan udara diabaikan, tentukan:
+
+1. Waktu yang diperlukan benda untuk mencapai titik tertinggi.
+2. Ketinggian maksimum yang dicapai benda.
+3. Kecepatan benda setelah 3 detik."></textarea>
+
+<button id="solve">
+⚡ HITUNG & TAMPILKAN LANGKAH
+</button>
+
+<div id="result" class="result" style="display:none"></div>
+
+</div>
+
+<div class="box">
+
+<b>Contoh soal</b>
+
+<div class="examples">
+
+🧮 Matematika<br>
+• 2x + 5 = 15<br>
+• 20% dari 500<br>
+• √144<br>
+• 25 + 15 × 2<br><br>
+
+🧪 Kimia<br>
+• 18 gram zat memiliki Mr 18. Berapa mol?<br>
+• 25 gram CaCO3 direaksikan dengan 150 mL HCl 2 M.<br><br>
+
+🌍 Fisika<br>
+• Massa 8 kg, g = 10 m/s². Berapa berat?<br>
+• m = 5 kg, a = 4 m/s². Berapa gaya?<br>
+• Benda dilempar vertikal dengan v₀ = 20 m/s, g = 10 m/s².<br><br>
+
+💡 Optik<br>
+• Sudut datang 35°. Berapa sudut pantul?<br>
+• Sudut terhadap cermin 30°. Berapa sudut datang?
+
+</div>
+</div>
+
+</div>
+
+
+<script>
+
+/* =====================================================
+   UTILITAS
+===================================================== */
+
+const $ = id => document.getElementById(id);
+
+function show(text){
+  $("result").style.display="block";
+  $("result").textContent=text;
+}
+
+function clean(s){
+
+  return s
+    .toLowerCase()
+    .replace(/,/g,".")
+    .replace(/×/g,"*")
+    .replace(/÷/g,"/")
+    .replace(/−/g,"-")
+    .replace(/∆/g,"delta")
+    .replace(/²/g,"^2")
+    .replace(/\s+/g," ");
+
+}
+
+function numberAfter(text,patterns){
+
+  for(const p of patterns){
+
+    const r=text.match(p);
+
+    if(r){
+
+      const n=parseFloat(r[1]);
+
+      if(Number.isFinite(n))
+        return n;
+
+    }
+
+  }
+
+  return null;
+
+}
+
+function fmt(n){
+
+  if(!Number.isFinite(n))
+    return "?";
+
+  if(Math.abs(n-Math.round(n))<1e-10)
+    return String(Math.round(n));
+
+  return String(Number(n.toFixed(6)));
+
+}
+
+
+/* =====================================================
+   DETEKSI BIDANG
+===================================================== */
+
+function detectSubject(t){
+
+  if(
+    /mol|mr|molar|massa atom|entalpi|dh|kalor|reaksi|larutan|konsentrasi|molaritas|stoikiometri|unsur|senyawa|gram.*hcl|caco3/.test(t)
+  )
+    return "chem";
+
+  if(
+    /sudut datang|sudut pantul|cermin|lensa|cahaya|bayangan|pemantulan|pembiasan/.test(t)
+  )
+    return "optics";
+
+  if(
+    /massa|gravitasi|gaya|berat|percepatan|kecepatan|jarak|waktu|energi|usaha|tekanan|momentum|dilempar|jatuh|vertikal/.test(t)
+  )
+    return "physics";
+
+  return "math";
+
+}
+
+
+/* =====================================================
+   MATEMATIKA
+===================================================== */
+
+function math(t){
+
+  let eq=t.match(
+    /([+-]?\d*\.?\d*)\s*x\s*([+-]\s*\d*\.?\d+)?\s*=\s*([+-]?\d*\.?\d+)/
+  );
+
+  if(eq){
+
+    let a=eq[1];
+
+    if(a===""||a==="+") a="1";
+    if(a==="-") a="-1";
+
+    a=parseFloat(a);
+
+    let b=eq[2]
+      ? parseFloat(eq[2].replace(/\s/g,""))
+      : 0;
+
+    let c=parseFloat(eq[3]);
+
+    if(a!==0){
+
+      const x=(c-b)/a;
+
+      return `🧮 PENYELESAIAN MATEMATIKA
+
+Persamaannya:
+
+${a}x ${b>=0?"+":"-"} ${Math.abs(b)} = ${c}
+
+Kita pindahkan ${b} ke ruas kanan:
+
+${a}x = ${c} - (${b})
+
+${a}x = ${c-b}
+
+Sekarang bagi kedua ruas dengan ${a}:
+
+x = (${c-b}) / ${a}
+
+x = ${fmt(x)}
+
+✅ Jadi, x = ${fmt(x)}`;
+
+    }
+
+  }
+
+
+  let p=t.match(
+    /(\d+(?:\.\d+)?)\s*%\s*(?:dari|of)\s*(\d+(?:\.\d+)?)/
+  );
+
+  if(p){
+
+    const a=parseFloat(p[1]);
+    const b=parseFloat(p[2]);
+
+    const result=a/100*b;
+
+    return `🧮 PENYELESAIAN
+
+Kita mencari ${a}% dari ${b}.
+
+Rumus:
+
+Hasil = ${a}/100 × ${b}
+
+Hasil = ${a/100} × ${b}
+
+Hasil = ${fmt(result)}
+
+✅ Jadi hasilnya ${fmt(result)}.`;
+
+  }
+
+
+  let root=t.match(
+    /(?:akar|√)\s*(?:dari\s*)?(\d+(?:\.\d+)?)/
+  );
+
+  if(root){
+
+    const n=parseFloat(root[1]);
+    const result=Math.sqrt(n);
+
+    return `🧮 PENYELESAIAN
+
+Kita mencari akar dari ${n}.
+
+√${n} = ${fmt(result)}
+
+✅ Jadi, √${n} = ${fmt(result)}.`;
+
+  }
+
+
+  let expr=t
+    .replace(/berapa|hasilnya|hitung|adalah/gi,"")
+    .replace(/\bx\b/gi,"*")
+    .trim();
+
+  if(/^[0-9+\-*/().%^ ]+$/.test(expr)){
+
+    try{
+
+      const original=expr;
+
+      expr=expr.replace(/\^/g,"**");
+
+      const value=Function(
+        '"use strict";return ('+expr+')'
+      )();
+
+      if(Number.isFinite(value)){
+
+        return `🧮 PENYELESAIAN
+
+Soalnya:
+
+${original}
+
+Kerjakan sesuai urutan operasi:
+
+${original}
+
+Hasil = ${fmt(value)}
+
+✅ Jadi jawabannya ${fmt(value)}.`;
+
+      }
+
+    }catch(e){}
+
+  }
+
+  return null;
+
+}
+
+
+/* =====================================================
+   KIMIA
+===================================================== */
+
+function chemistry(t){
+
+  const AR={
+    h:1,
+    c:12,
+    n:14,
+    o:16,
+    f:19,
+    na:23,
+    mg:24,
+    al:27,
+    si:28,
+    p:31,
+    s:32,
+    cl:35.5,
+    k:39,
+    ca:40,
+    fe:56,
+    cu:63.5,
+    zn:65,
+    ag:108,
+    br:80,
+    i:127,
+    ba:137
+  };
+
+
+  function getMr(formula){
+
+    formula=formula
+      .toLowerCase()
+      .replace(/\s/g,"");
+
+    let i=0;
+    let total=0;
+
+    while(i<formula.length){
+
+      let symbol=formula.slice(i,i+2);
+
+      if(!AR[symbol])
+        symbol=formula[i];
+
+      if(!AR[symbol])
+        return null;
+
+      i+=symbol.length;
+
+      let num="";
+
+      while(
+        i<formula.length &&
+        /[0-9.]/.test(formula[i])
+      ){
+
+        num+=formula[i];
+        i++;
+
+      }
+
+      const jumlah=num
+        ? parseFloat(num)
+        : 1;
+
+      total+=AR[symbol]*jumlah;
+
+    }
+
+    return total;
+
+  }
+
+
+  const mass=numberAfter(t,[
+
+    /massa\s*(?:zat|sampel)?\s*(?:=|adalah|sebesar)?\s*(-?\d+(?:\.\d+)?)\s*g/,
+
+    /(-?\d+(?:\.\d+)?)\s*g\s*(?:zat|sampel)?/
+
+  ]);
+
+
+  const mr=numberAfter(t,[
+
+    /\bmr\s*(?:=|adalah|sebesar)?\s*(-?\d+(?:\.\d+)?)/,
+
+    /massa molekul relatif\s*(?:=|adalah|sebesar)?\s*(-?\d+(?:\.\d+)?)/
+
+  ]);
+
+
+  if(mass!==null && mr!==null && mr!==0){
+
+    const mol=mass/mr;
+
+    return `🧪 PENYELESAIAN KIMIA
+
+Untuk mencari jumlah mol, massa zat dibagi dengan Mr.
+
+n = m / Mr
+
+n = ${mass} / ${mr}
+
+n = ${fmt(mol)} mol
+
+✅ Jadi jumlah zat tersebut adalah ${fmt(mol)} mol.`;
+
+  }
+
+
+  const mol=numberAfter(t,[
+
+    /(?:jumlah\s*)?mol\s*(?:=|sebanyak|adalah)?\s*(-?\d+(?:\.\d+)?)/,
+
+    /\bn\s*=\s*(-?\d+(?:\.\d+)?)/
+
+  ]);
+
+
+  const volume=numberAfter(t,[
+
+    /volume\s*(?:=|sebanyak|adalah)?\s*(-?\d+(?:\.\d+)?)\s*(?:l|liter)/,
+
+    /(-?\d+(?:\.\d+)?)\s*(?:l|liter)\s*(?:larutan)?/
+
+  ]);
+
+
+  if(mol!==null && volume!==null && volume!==0){
+
+    const M=mol/volume;
+
+    return `🧪 PENYELESAIAN MOLARITAS
+
+Molaritas menunjukkan jumlah mol dalam setiap liter larutan.
+
+M = n / V
+
+M = ${mol} / ${volume}
+
+M = ${fmt(M)} mol/L
+
+✅ Jadi molaritasnya ${fmt(M)} M.`;
+
+  }
+
+
+  const m=numberAfter(t,[
+    /massa\s*(?:=|adalah|sebesar)?\s*(-?\d+(?:\.\d+)?)\s*g/
+  ]);
+
+  const c=numberAfter(t,[
+    /kalor jenis\s*(?:=|adalah|sebesar)?\s*(-?\d+(?:\.\d+)?)/,
+    /\bc\s*=\s*(-?\d+(?:\.\d+)?)/
+  ]);
+
+  const dt=numberAfter(t,[
+    /(?:delta\s*t|perubahan suhu|selisih suhu)\s*(?:=|sebesar|adalah)?\s*(-?\d+(?:\.\d+)?)/,
+    /dt\s*=\s*(-?\d+(?:\.\d+)?)/
+  ]);
+
+
+  if(m!==null && c!==null && dt!==null){
+
+    const q=m*c*dt;
+
+    return `🧪 PENYELESAIAN KALOR
+
+Gunakan persamaan:
+
+q = m × c × ΔT
+
+Masukkan nilai yang diketahui:
+
+q = ${m} × ${c} × ${dt}
+
+q = ${fmt(q)}
+
+✅ Jadi kalor yang dihasilkan adalah ${fmt(q)}.`;
+
+  }
+
+
+  return null;
+
+}
+
+
+/* =====================================================
+   FISIKA / GRAVITASI
+===================================================== */
+
+function physics(t){
+
+  const mass=numberAfter(t,[
+
+    /massa\s*(?:benda)?\s*(?:=|adalah|sebesar)?\s*(-?\d+(?:\.\d+)?)\s*kg/,
+
+    /\bm\s*=\s*(-?\d+(?:\.\d+)?)\s*kg/
+
+  ]);
+
+
+  const g=numberAfter(t,[
+
+    /gravitasi\s*(?:=|adalah|sebesar)?\s*(-?\d+(?:\.\d+)?)\s*m\s*\/?\s*s/,
+
+    /\bg\s*=\s*(-?\d+(?:\.\d+)?)\s*m\s*\/?\s*s/
+
+  ]) ?? 9.8;
+
+
+  /* =================================================
+     GERAK VERTIKAL
+     HARUS DICEK SEBELUM BERAT
+  ================================================= */
+
+  const v0=numberAfter(t,[
+
+    /kecepatan awal\s*(?:=|adalah|sebesar)?\s*(-?\d+(?:\.\d+)?)\s*m\s*\/?\s*s/,
+
+    /v0\s*=\s*(-?\d+(?:\.\d+)?)\s*m\s*\/?\s*s/,
+
+    /v₀\s*=\s*(-?\d+(?:\.\d+)?)\s*m\s*\/?\s*s/
+
+  ]);
+
+
+  if(
+    v0!==null &&
+    /vertikal|dilempar|titik tertinggi|ketinggian maksimum|kecepatan.*detik/.test(t)
+  ){
+
+    const timeTop=v0/g;
+
+    const heightMax=(v0*v0)/(2*g);
+
+
+    /* -----------------------------------------------
+       CARI WAKTU PADA PERTANYAAN NOMOR 3
+    ----------------------------------------------- */
+
+    let timeAfter=null;
+
+    const timePatterns=[
+
+      /setelah\s+(\d+(?:\.\d+)?)\s*detik/,
+
+      /setelah\s+(\d+(?:\.\d+)?)\s*s\b/,
+
+      /dalam\s+(\d+(?:\.\d+)?)\s*detik/,
+
+      /pada\s+(\d+(?:\.\d+)?)\s*detik/
+
+    ];
+
+
+    for(const pattern of timePatterns){
+
+      const match=t.match(pattern);
+
+      if(match){
+
+        timeAfter=parseFloat(match[1]);
+
+        break;
+
+      }
+
+    }
+
+
+    let result=`🌍 PENYELESAIAN GERAK VERTIKAL
+
+Benda dilempar ke atas dengan kecepatan awal ${v0} m/s.
+
+Percepatan gravitasi yang bekerja ke bawah adalah ${g} m/s².
+
+
+━━━━━━━━━━━━━━━━━━━━
+1. Waktu mencapai titik tertinggi
+━━━━━━━━━━━━━━━━━━━━
+
+Di titik tertinggi, kecepatan benda menjadi 0 m/s.
+
+Gunakan:
+
+v = v₀ - g × t
+
+Karena v = 0:
+
+0 = ${v0} - ${g} × t
+
+Maka:
+
+t = v₀ / g
+
+t = ${v0} / ${g}
+
+t = ${fmt(timeTop)} s
+
+
+━━━━━━━━━━━━━━━━━━━━
+2. Ketinggian maksimum
+━━━━━━━━━━━━━━━━━━━━
+
+Untuk mencari ketinggian maksimum, gunakan:
+
+h = v₀² / (2 × g)
+
+Masukkan nilainya:
+
+h = ${v0}² / (2 × ${g})
+
+h = ${v0*v0} / ${2*g}
+
+h = ${fmt(heightMax)} m`;
+
+
+    /* -----------------------------------------------
+       NOMOR 3
+    ----------------------------------------------- */
+
+    if(timeAfter!==null){
+
+      const velocityAfter=
+        v0-(g*timeAfter);
+
+
+      result+=`
+
+━━━━━━━━━━━━━━━━━━━━
+3. Kecepatan setelah ${timeAfter} detik
+━━━━━━━━━━━━━━━━━━━━
+
+Gunakan persamaan:
+
+v = v₀ - g × t
+
+Masukkan nilai yang diketahui:
+
+v = ${v0} - (${g} × ${timeAfter})
+
+v = ${v0} - ${fmt(g*timeAfter)}
+
+v = ${fmt(velocityAfter)} m/s`;
+
+
+      if(velocityAfter<0){
+
+        result+=`
+
+Tanda negatif menunjukkan bahwa benda sudah bergerak
+ke bawah. Besar kecepatannya adalah ${fmt(Math.abs(velocityAfter))} m/s.`;
+
+      }
+
+    }
+
+
+    result+=`
+
+━━━━━━━━━━━━━━━━━━━━
+✅ HASIL AKHIR
+━━━━━━━━━━━━━━━━━━━━
+
+1. Waktu mencapai titik tertinggi = ${fmt(timeTop)} s
+2. Ketinggian maksimum = ${fmt(heightMax)} m`;
+
+
+    if(timeAfter!==null){
+
+      const velocityAfter=
+        v0-(g*timeAfter);
+
+      result+=`
+3. Kecepatan setelah ${timeAfter} detik = ${fmt(velocityAfter)} m/s`;
+
+    }
+
+
+    return result;
+
+  }
+
+
+  /* =================================================
+     BERAT
+  ================================================= */
+
+  if(
+    mass!==null &&
+    (/berat|gravitasi|bumi|g\s*=/.test(t))
+  ){
+
+    const W=mass*g;
+
+    return `🌍 PENYELESAIAN GRAVITASI
+
+Berat benda dapat dicari dengan mengalikan massa
+dengan percepatan gravitasi.
+
+W = m × g
+
+W = ${mass} × ${g}
+
+W = ${fmt(W)} N
+
+✅ Jadi berat benda adalah ${fmt(W)} N.`;
+
+  }
+
+
+  /* =================================================
+     GAYA
+  ================================================= */
+
+  const acceleration=numberAfter(t,[
+
+    /percepatan\s*(?:=|adalah|sebesar)?\s*(-?\d+(?:\.\d+)?)\s*m\s*\/?\s*s/,
+
+    /\ba\s*=\s*(-?\d+(?:\.\d+)?)\s*m\s*\/?\s*s/
+
+  ]);
+
+
+  if(mass!==null && acceleration!==null){
+
+    const F=mass*acceleration;
+
+    return `🌍 PENYELESAIAN GAYA
+
+Gunakan hukum II Newton:
+
+F = m × a
+
+Masukkan nilainya:
+
+F = ${mass} × ${acceleration}
+
+F = ${fmt(F)} N
+
+✅ Jadi gaya yang bekerja adalah ${fmt(F)} N.`;
+
+  }
+
+
+  /* =================================================
+     ENERGI POTENSIAL
+  ================================================= */
+
+  const h=numberAfter(t,[
+
+    /tinggi\s*(?:=|adalah|sebesar)?\s*(-?\d+(?:\.\d+)?)\s*m/,
+
+    /\bh\s*=\s*(-?\d+(?:\.\d+)?)\s*m/
+
+  ]);
+
+
+  if(mass!==null && h!==null){
+
+    const Ep=mass*g*h;
+
+    return `🌍 PENYELESAIAN ENERGI POTENSIAL
+
+Energi potensial gravitasi dihitung dengan:
+
+Ep = m × g × h
+
+Masukkan nilainya:
+
+Ep = ${mass} × ${g} × ${h}
+
+Ep = ${fmt(Ep)} J
+
+✅ Jadi energi potensialnya ${fmt(Ep)} J.`;
+
+  }
+
+
+  return null;
+
+}
+
+
+/* =====================================================
+   OPTIK
+===================================================== */
+
+function optics(t){
+
+  const incident=numberAfter(t,[
+
+    /sudut datang\s*(?:=|adalah|sebesar)?\s*(-?\d+(?:\.\d+)?)\s*(?:°|derajat)?/,
+
+    /\bsudut datang.*?(\d+(?:\.\d+)?)/
+
+  ]);
+
+
+  if(incident!==null){
+
+    return `💡 PENYELESAIAN PEMANTULAN
+
+Menurut hukum pemantulan, sudut datang
+sama dengan sudut pantul.
+
+i = r
+
+Diketahui:
+
+i = ${incident}°
+
+Maka:
+
+r = ${incident}°
+
+✅ Jadi sudut pantulnya adalah ${incident}°.`;
+
+  }
+
+
+  const reflected=numberAfter(t,[
+
+    /sudut pantul\s*(?:=|adalah|sebesar)?\s*(-?\d+(?:\.\d+)?)\s*(?:°|derajat)?/
+
+  ]);
+
+
+  if(reflected!==null){
+
+    return `💡 PENYELESAIAN PEMANTULAN
+
+Menurut hukum pemantulan:
+
+i = r
+
+Diketahui:
+
+r = ${reflected}°
+
+Maka:
+
+i = ${reflected}°
+
+✅ Jadi sudut datangnya adalah ${reflected}°.`;
+
+  }
+
+
+  const mirror=numberAfter(t,[
+
+    /(?:sudut terhadap cermin|sudut dengan cermin)\s*(?:=|adalah|sebesar)?\s*(-?\d+(?:\.\d+)?)/
+
+  ]);
+
+
+  if(mirror!==null){
+
+    const angle=90-mirror;
+
+    return `💡 PENYELESAIAN PEMANTULAN
+
+Sudut datang diukur dari garis normal,
+sedangkan sudut yang diberikan diukur dari permukaan cermin.
+
+Keduanya membentuk sudut 90°.
+
+Maka:
+
+i = 90° - ${mirror}°
+
+i = ${fmt(angle)}°
+
+Menurut hukum pemantulan:
+
+i = r
+
+Jadi:
+
+r = ${fmt(angle)}°
+
+✅ Sudut datang = ${fmt(angle)}°
+✅ Sudut pantul = ${fmt(angle)}°`;
+
+  }
+
+
+  return null;
+
+}
+
+
+/* =====================================================
+   MESIN UTAMA
+===================================================== */
+
+function solve(){
+
+  const raw=$("input").value.trim();
+
+  if(!raw){
+
+    show("Masukkan soal terlebih dahulu.");
+
+    return;
+
+  }
+
+
+  const t=clean(raw);
+
+  let subject=$("subject").value;
+
+
+  if(subject==="auto"){
+
+    subject=detectSubject(t);
+
+  }
+
+
+  let answer=null;
+
+
+  if(subject==="math")
+    answer=math(t);
+
+
+  if(subject==="chem")
+    answer=chemistry(t);
+
+
+  if(subject==="physics")
+    answer=physics(t);
+
+
+  if(subject==="optics")
+    answer=optics(t);
+
+
+  if(answer){
+
+    show(answer);
+
+  }else{
+
+    show(
+      "❌ Soal belum dikenali.\n\n"+
+      "Coba gunakan format yang lebih jelas."
+    );
+
+  }
+
+}
+
+
+/* =====================================================
+   OCR FOTO
+===================================================== */
+
+$("read").addEventListener("click",async()=>{
+
+  const file=$("image").files[0];
+
+  if(!file){
+
+    $("status").textContent=
+      "Pilih foto terlebih dahulu.";
+
+    return;
+
+  }
+
+
+  $("status").textContent=
+    "⏳ Membaca soal...";
+
+
+  try{
+
+    const result=await Tesseract.recognize(
+
+      file,
+
+      "eng",
+
+      {
+
+        logger:m=>{
+
+          if(m.status){
+
+            $("status").textContent=
+              m.status+" "+
+              Math.round(
+                (m.progress||0)*100
+              )+"%";
+
+          }
+
+        }
+
+      }
+
+    );
+
+
+    $("input").value=result.data.text;
+
+    $("status").textContent=
+      "✅ Soal berhasil dibaca.";
+
+  }catch(e){
+
+    $("status").textContent=
+      "❌ Gagal membaca foto.";
+
+  }
+
+});
+
+
+$("solve").addEventListener(
+  "click",
+  solve
+);
+
+
+$("input").addEventListener(
+  "keydown",
+  e=>{
+
+    if(
+      (e.ctrlKey||e.metaKey) &&
+      e.key==="Enter"
+    ){
+
+      solve();
+
+    }
+
+  }
+);
+
+</script>
+
+</body>
+</html>
